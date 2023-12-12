@@ -13,6 +13,8 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+
+	"github.com/Bai-Tian/minecraft-mod-synchronizer/cmd"
 )
 
 const (
@@ -69,8 +71,14 @@ func findModsFolders(path string) ([]string, error) {
 func main() {
 	var config Config
 
+	settings, err := cmd.ReadClientSettings()
+	if err != nil {
+		fmt.Printf("错误：无法读取设置文件 - %v", err)
+		Exit()
+	}
+
 	// 检查是否存在 客户端mod同步器.json 文件
-	if _, err := os.Stat(ConfigFile); os.IsNotExist(err) {
+	if _, err := os.Stat(settings.ConfigFile); os.IsNotExist(err) {
 		// 如果不存在，找出所有名为 "mods" 的文件夹
 		modsFolders, err := findModsFolders(".")
 		if err != nil {
@@ -94,14 +102,14 @@ func main() {
 			fmt.Printf("错误：无法保存配置 - %v", err)
 			Exit()
 		}
-		err = ioutil.WriteFile(ConfigFile, configBytes, 0644)
+		err = ioutil.WriteFile(settings.ConfigFile, configBytes, 0644)
 		if err != nil {
 			fmt.Printf("错误：无法写入配置文件 - %v", err)
 			Exit()
 		}
 	} else {
 		// 如果存在，读取配置文件
-		configBytes, err := ioutil.ReadFile(ConfigFile)
+		configBytes, err := ioutil.ReadFile(settings.ConfigFile)
 		if err != nil {
 			fmt.Printf("错误：无法读取配置文件 - %v", err)
 			Exit()
@@ -114,7 +122,7 @@ func main() {
 	}
 
 	// 从服务器获取 mod 列表
-	resp, err := http.Get(ServerAddress + ListEndpoint)
+	resp, err := http.Get(settings.ServerAddress + settings.ListEndpoint)
 	if err != nil {
 		fmt.Printf("错误：无法从服务器获取 mod 列表 - %v", err)
 		Exit()
@@ -169,7 +177,7 @@ func main() {
 
 	if len(modsToDelete) > 0 {
 		fmt.Printf("以下 mod 需要删除：%v\n", modsToDelete)
-		fmt.Printf("%s\n", DownloadPrompt)
+		fmt.Printf("%s\n", settings.DownloadPrompt)
 		var input string
 		fmt.Scanln(&input)
 		if input == "y" {
@@ -197,7 +205,7 @@ func main() {
 		for _, mod := range modsToDownload {
 			fmt.Printf("  - %s\n", mod.Name)
 		}
-		fmt.Printf("%s\n", DownloadPrompt)
+		fmt.Printf("%s\n", settings.DownloadPrompt)
 		var input string
 		fmt.Scanln(&input)
 		if input == "y" {
@@ -210,7 +218,7 @@ func main() {
 					defer wg.Done()
 					for mod := range downloadCh {
 						escapedModName := url.QueryEscape(mod.Name)
-						resp, err := http.Get(ServerAddress + DownloadEndpoint + "?file=" + escapedModName)
+						resp, err := http.Get(settings.ServerAddress + settings.DownloadEndpoint + "?file=" + escapedModName)
 						if err != nil {
 							log.Printf("下载队列 %d：错误：无法下载 mod %s - %v", id, mod.Name, err)
 							continue

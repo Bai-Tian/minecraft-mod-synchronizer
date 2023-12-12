@@ -10,15 +10,20 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+
+	"github.com/Bai-Tian/minecraft-mod-synchronizer/cmd"
+	"github.com/spf13/cobra"
 )
 
 const (
 	ModsFolder       = "mods"
 	DeleteFile       = "delete.json"
-	ServerPort       = "25555"
+	ServerPort       = 25555
 	ListEndpoint     = "/list"
 	DownloadEndpoint = "/download"
 )
+
+var settings cmd.ServerSettings
 
 var modList ModList
 
@@ -33,24 +38,42 @@ type ModList struct {
 }
 
 func main() {
+	rootCmd := &cobra.Command{
+		Use: "server",
+		Run: main0,
+	}
+
+	rootCmd.PersistentFlags().StringVarP(&settings.ModsFolder, "mods-folder", "m", ModsFolder, "ServerSettings::ModsFolder")
+	rootCmd.PersistentFlags().StringVarP(&settings.DeleteFile, "delete-file", "d", DeleteFile, "ServerSettings::DeleteFile")
+	rootCmd.PersistentFlags().Uint16VarP(&settings.ServerPort, "server-port", "P", ServerPort, "ServerSettings::ServerPort")
+	rootCmd.PersistentFlags().StringVar(&settings.ListEndpoint, "list-endpoint", ListEndpoint, "ServerSettings::ListEndpoint")
+	rootCmd.PersistentFlags().StringVar(&settings.DownloadEndpoint, "download-endpoint", DownloadEndpoint, "ServerSettings::DownloadEndpoint")
+
+	err := rootCmd.Execute()
+	if err != nil {
+		log.Fatalf("invalid args: %v", err)
+	}
+}
+
+func main0(c *cobra.Command, args []string) {
 	// 检查是否存在 mods 文件夹
-	if _, err := os.Stat(ModsFolder); os.IsNotExist(err) {
-		log.Fatalf("错误：找不到 %s 文件夹", ModsFolder)
+	if _, err := os.Stat(settings.ModsFolder); os.IsNotExist(err) {
+		log.Fatalf("错误：找不到 %s 文件夹", settings.ModsFolder)
 	}
 
 	// 检查是否存在 delete.json 文件
-	if _, err := os.Stat(DeleteFile); os.IsNotExist(err) {
+	if _, err := os.Stat(settings.DeleteFile); os.IsNotExist(err) {
 		// 如果不存在，则创建空的 delete.json 文件
-		err := ioutil.WriteFile(DeleteFile, []byte("{}"), 0644)
+		err := ioutil.WriteFile(settings.DeleteFile, []byte("{}"), 0644)
 		if err != nil {
-			log.Fatalf("错误：无法创建 %s 文件", DeleteFile)
+			log.Fatalf("错误：无法创建 %s 文件", settings.DeleteFile)
 		}
 	}
 
 	// 读取 delete.json 文件
-	deleteListBytes, err := ioutil.ReadFile(DeleteFile)
+	deleteListBytes, err := ioutil.ReadFile(settings.DeleteFile)
 	if err != nil {
-		log.Fatalf("错误：无法读取 %s 文件", DeleteFile)
+		log.Fatalf("错误：无法读取 %s 文件", settings.DeleteFile)
 	}
 
 	err = json.Unmarshal(deleteListBytes, &modList.Delete)
@@ -59,7 +82,7 @@ func main() {
 	}
 
 	// 计算 mods 文件夹下的所有文件的 SHA256 哈希值和文件名
-	err = filepath.Walk(ModsFolder, func(path string, info os.FileInfo, err error) error {
+	err = filepath.Walk(settings.ModsFolder, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
@@ -83,11 +106,11 @@ func main() {
 	}
 
 	// 设置 HTTP 请求处理函数
-	http.HandleFunc(ListEndpoint, listHandler)
-	http.HandleFunc(DownloadEndpoint, downloadHandler)
+	http.HandleFunc(settings.ListEndpoint, listHandler)
+	http.HandleFunc(settings.DownloadEndpoint, downloadHandler)
 
 	// 启动 HTTP 服务器
-	serverAddress := fmt.Sprintf(":%s", ServerPort)
+	serverAddress := fmt.Sprintf(":%d", int(settings.ServerPort))
 	log.Printf("服务器已启动，监听地址：%s", serverAddress)
 	err = http.ListenAndServe(serverAddress, nil)
 	if err != nil {
@@ -114,7 +137,7 @@ func downloadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	filePath := filepath.Join(ModsFolder, modName)
+	filePath := filepath.Join(settings.ModsFolder, modName)
 	file, err := os.Open(filePath)
 	if err != nil {
 		http.Error(w, "错误：文件未找到", http.StatusNotFound)
